@@ -1,0 +1,88 @@
+name: Dart quality Check (repository)
+
+on:
+  workflow_call:
+    inputs:
+      DART_SDK_VERSION:
+        required: true
+        type: string
+
+jobs:
+  run-quality-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: dart-lang/setup-dart@v1.3
+        with:
+          sdk: ${{ inputs.DART_SDK_VERSION }}
+
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies, check lock file
+        run: |
+          dart pub get
+          if [[ $(git status --porcelain | wc -l) -gt 0 ]]; then
+              echo >&2 "Some changes in files detected:"
+              git status --porcelain
+              git diff | cat
+              exit 1
+          fi
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze project source
+        run: dart analyze --fatal-infos --fatal-warnings
+
+      - name: Run tests
+        run: |
+          if [[ -n $(find test -name "*_test.dart" -print -quit) ]]; then
+            dart test; 
+          fi
+
+      - name: Code generation mismatch check
+        run: |
+          PUBSPEC_WITHOUT_COMMENTS=$(grep -o '^[^#]*' pubspec.yaml);
+          if echo "$PUBSPEC_WITHOUT_COMMENTS" | grep -q "build_runner"; then
+            dart run build_runner build --delete-conflicting-outputs --fail-on-severe
+            if [[ $(git status --porcelain | wc -l) -gt 0 ]]; then
+                echo >&2 "Some changes in files detected:"
+                git status --porcelain
+                git diff | cat
+
+                exit 1
+            fi
+          fi
+
+      - name: Find Directories for dart_code_metrics
+        id: find_dirs
+        run: |
+          DIRS=("bin" "lib" "test")
+          DIRS_THAT_EXIST=()
+          for dir in "${DIRS[@]}"; do
+            if [[ -d "$dir" ]]; then
+              DIRS_THAT_EXIST+=("$dir")
+            fi
+          done
+          echo "CODE_METRICS_DIRS=${DIRS_THAT_EXIST[@]}" >> $GITHUB_OUTPUT
+
+      - name: Analyze code with dart_code_metrics
+        env:
+          CODE_METRICS_DIRS: ${{ steps.find_dirs.outputs.CODE_METRICS_DIRS }}
+        run: |
+          dart run dart_code_metrics:metrics analyze --fatal-style --fatal-performance --no-fatal-warnings ${CODE_METRICS_DIRS[*]};
+
+
+      - name: Check unused files with dart_code_metrics
+        env:
+          CODE_METRICS_DIRS: ${{ steps.find_dirs.outputs.CODE_METRICS_DIRS }}
+        run: |
+          dart run dart_code_metrics:metrics check-unused-files --fatal-unused ${CODE_METRICS_DIRS[*]};
+          
+
+      - name: Check unused code with dart_code_metrics
+        env:
+          CODE_METRICS_DIRS: ${{ steps.find_dirs.outputs.CODE_METRICS_DIRS }}
+        run: |
+          dart run dart_code_metrics:metrics check-unused-code --fatal-unused ${CODE_METRICS_DIRS[*]};
+          
