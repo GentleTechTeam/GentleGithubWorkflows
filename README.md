@@ -11,7 +11,7 @@ This repository serves as a centralized hub for a variety of GitHub Actions work
 
 ## Installation
 
-Add jobs (f.e dart_quality_check) to your workflow at `.github/workflows/your_workflow.yaml` and provide the desired version of the dart SDK:
+Add jobs (f.e dart_quality_check) to your workflow at `.github/workflows/your_workflow.yml` and provide the desired version of the dart SDK:
 
 ```yaml
     jobs:
